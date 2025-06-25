@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Equilibrio Químico y Le Chatelier</title>
+  <style>
+    body {
+      background: #f4f8fa;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #2a3d66;
+      text-align: center;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 900px;
+      margin: auto;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+    }
+    input, select, button, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+    }
+    button {
+      background: #2a3d66;
+      color: white;
+      margin-top: 20px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #1c2747;
+    }
+    .result {
+      background: #eef4ff;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Equilibrio Químico y Le Chatelier</h1>
+
+  <div class="card">
+    <label for="equation">Ecuación química (con ⇌ si hay equilibrio):</label>
+    <input type="text" id="equation" placeholder="Ej: N2 + 3H2 ⇌ 2NH3" value="N2 + 3H2 ⇌ 2NH3">
+
+    <label for="concentrations">Concentraciones iniciales (en mol/L, separadas por comas en orden según especies):</label>
+    <input type="text" id="concentrations" placeholder="Ej: 1.0, 3.0, 0" value="1.0, 3.0, 0">
+
+    <label for="reactionType">Tipo de reacción térmica:</label>
+    <select id="reactionType">
+      <option value="">Selecciona tipo</option>
+      <option value="endotermica">Endotérmica</option>
+      <option value="exotermica">Exotérmica</option>
+      <option value="desconocido" selected>Desconocido / No especificado</option>
+    </select>
+
+    <label for="change">Aplicar cambio según Le Chatelier:</label>
+    <select id="change">
+      <option value="">Selecciona una perturbación</option>
+      <option value="presion">↑ Presión</option>
+      <option value="concentracionReactivos">↑ Reactivos</option>
+      <option value="concentracionProductos">↑ Productos</option>
+      <option value="temperaturaAlta">↑ Temperatura</option>
+      <option value="temperaturaBaja">↓ Temperatura</option>
+    </select>
+
+    <button onclick="analizar()">Analizar equilibrio</button>
+
+    <div class="result" id="resultado">
+      <!-- Aquí aparecerá el resultado -->
+    </div>
+  </div>
+
+  <script>
+    // Función para parsear término químico, ej: "3H2" => {coef: 3, specie: "H2"}
+    function parseTerm(term) {
+      term = term.trim();
+      // Buscar número al principio, puede ser decimal o entero
+      let coefMatch = term.match(/^(\d+(\.\d+)?)/);
+      if (coefMatch) {
+        return { coef: parseFloat(coefMatch[1]), specie: term.slice(coefMatch[1].length).trim() };
+      } else {
+        return { coef: 1, specie: term };
+      }
+    }
+
+    // Parsear lado de la reacción (reactivos o productos), ej: "N2 + 3H2" => [{coef, specie},...]
+    function parseSide(sideStr) {
+      return sideStr.split('+').map(t => parseTerm(t));
+    }
+
+    // Construir expresión de K en formato texto, ej: [NH3]^2 / ([N2] * [H2]^3)
+    function construirExpresionK(reactivos, productos) {
+      function expresionLado(arr) {
+        return arr.map(({coef, specie}) => {
+          if (coef === 1) return `[${specie}]`;
+          else return `[${specie}]^${coef}`;
+        }).join(' · ');
+      }
+      return expresionLado(productos) + " / " + "(" + expresionLado(reactivos) + ")";
+    }
+
+    // Calcular valor numérico de K dadas concentraciones y coeficientes
+    // concs = array de números en orden según especie total (reactivos + productos concatenados)
+    // reactivos, productos: arrays con coef y specie
+    function calcularK(reactivos, productos, concs) {
+      // Concatenamos reactivos y productos para el orden de concentraciones
+      let especies = reactivos.concat(productos).map(e => e.specie);
+
+      // Verificar que concs tenga el mismo length que especies
+      if (concs.length !== especies.length) {
+        return {error: "Cantidad de concentraciones no coincide con la cantidad de especies."};
+      }
+
+      // Crear diccionario especie -> concentración
+      let concDict = {};
+      especies.forEach((sp, i) => {
+        concDict[sp] = concs[i];
+      });
+
+      // Calcular producto de [productos]^coef
+      let prodNumerador = 1;
+      for (let p of productos) {
+        let c = concDict[p.specie];
+        if (c === undefined) return {error: `Concentración de ${p.specie} no encontrada`};
+        prodNumerador *= Math.pow(c, p.coef);
+      }
+
+      // Calcular producto de [reactivos]^coef
+      let prodDenominador = 1;
+      for (let r of reactivos) {
+        let c = concDict[r.specie];
+        if (c === undefined) return {error: `Concentración de ${r.specie} no encontrada`};
+        prodDenominador *= Math.pow(c, r.coef);
+      }
+
+      // Evitar división por cero
+      if (prodDenominador === 0) return {error: "División por cero: concentración de algún reactivo es cero."};
+
+      let K = prodNumerador / prodDenominador;
+      return {K: K};
+    }
+
+    // Contar moles gaseosos para cada lado (sumar coeficientes)
+    // Suponemos que todas las especies son gases (simplificación)
+    function contarMolesGas(arr) {
+      let total = 0;
+      for (let sp of arr) {
+        total += sp.coef;
+      }
+      return total;
+    }
+
+    function analizar() {
+      const eq = document.getElementById("equation").value.trim();
+      const concStr = document.getElementById("concentrations").value.trim();
+      const cambio = document.getElementById("change").value;
+      const reactionType = document.getElementById("reactionType").value;
+      const resultado = document.getElementById("resultado");
+
+      let respuesta = "";
+
+      if (!eq.includes("⇌")) {
+        resultado.innerHTML = "⚠️ La ecuación no representa un equilibrio (usa ⇌)";
+        return;
+      }
+
+      // Separar reactivos y productos
+      let [left, right] = eq.split("⇌").map(s => s.trim());
+      if (!left || !right) {
+        resultado.innerHTML = "⚠️ La ecuación no está completa.";
+        return;
+      }
+
+      let reactivos = parseSide(left);
+      let productos = parseSide(right);
+
+      // Mostrar especies detectadas y orden para concentraciones
+      let especiesTotales = reactivos.concat(productos).map(e => e.specie);
+      respuesta += "✅ Se detecta una reacción en equilibrio.\n";
+      respuesta += "🧪 Especies detectadas (orden para concentraciones):\n";
+      respuesta += especiesTotales.map((e,i) => `  ${i+1}. ${e}`).join("\n") + "\n\n";
+
+      // Parsear concentraciones
+      let concs = concStr.split(",").map(x => parseFloat(x.trim()));
+      if (concs.some(c => isNaN(c))) {
+        resultado.innerHTML = "⚠️ Las concentraciones deben ser números separados por comas.";
+        return;
+      }
+
+      if (concs.length !== especiesTotales.length) {
+        resultado.innerHTML = `⚠️ Debe ingresar ${especiesTotales.length} concentraciones (una por especie detectada).`;
+        return;
+      }
+
+      respuesta += "📊 Concentraciones iniciales:\n";
+      for (let i = 0; i < especiesTotales.length; i++) {
+        respuesta += `  [${especiesTotales[i]}] = ${concs[i]} mol/L\n`;
+      }
+      respuesta += "\n";
+
+      // Construir expresión de K
+      let expresionK = construirExpresionK(reactivos, productos);
+      respuesta += `📈 Expresión de la constante de equilibrio K:\n  K = ${expresionK}\n\n`;
+
+      // Calcular valor numérico de K
+      let calcK = calcularK(reactivos, productos, concs);
+      if (calcK.error) {
+        resultado.innerHTML = "⚠️ Error al calcular K: " + calcK.error;
+        return;
+      } else {
+        respuesta += `🔢 Valor numérico de K con concentraciones dadas:\n  K = ${calcK.K.toFixed(4)}\n\n`;
+      }
+
+      // Análisis de Le Chatelier
+      if (cambio) {
+        respuesta += "🔄 Predicción según el principio de Le Chatelier:\n";
+
+        switch (cambio) {
+          case "presion":
+            // Contar moles gaseosos
+            let molesReactivos = contarMolesGas(reactivos);
+            let molesProductos = contarMolesGas(productos);
+            respuesta += "↪️ Aumento de presión: el equilibrio se desplazará hacia el lado con menos moles de gas.\n";
+            if (molesReactivos > molesProductos) {
+              respuesta += `  Moles reactivos = ${molesReactivos}, moles productos = ${molesProductos} → se favorecen los productos.\n`;
+            } else if (molesReactivos < molesProductos) {
+              respuesta += `  Moles reactivos = ${molesReactivos}, moles productos = ${molesProductos} → se favorecen los reactivos.\n`;
+            } else {
+              respuesta += `  Mismos moles en ambos lados (${molesReactivos}), no hay desplazamiento por presión.\n`;
+            }
+            break;
+
+          case "concentracionReactivos":
+            respuesta += "↪️ Aumento de reactivos: el equilibrio se desplazará hacia los productos.\n";
+            break;
+
+          case "concentracionProductos":
+            respuesta += "↪️ Aumento de productos: el equilibrio se desplazará hacia los reactivos.\n";
+            break;
+
+          case "temperaturaAlta":
+            if (reactionType === "endotermica") {
+              respuesta += "↪️ Aumento de temperatura: la reacción endotérmica favorece los productos.\n";
+            } else if (reactionType === "exotermica") {
+              respuesta += "↪️ Aumento de temperatura: la reacción exotérmica favorece los reactivos.\n";
+            } else {
+              respuesta += "↪️ Aumento de temperatura: tipo de reacción no especificado, no se puede predecir desplazamiento.\n";
+            }
+            break;
+
+          case "temperaturaBaja":
+            if (reactionType === "exotermica") {
+              respuesta += "↪️ Disminución de temperatura: la reacción exotérmica favorece los productos.\n";
+            } else if (reactionType === "endotermica") {
+              respuesta += "↪️ Disminución de temperatura: la reacción endotérmica favorece los reactivos.\n";
+            } else {
+              respuesta += "↪️ Disminución de temperatura: tipo de reacción no especificado, no se puede predecir desplazamiento.\n";
+            }
+            break;
+        }
+      } else {
+        respuesta += "ℹ️ No se aplicó ninguna perturbación para analizar Le Chatelier.";
+      }
+
+      resultado.innerText = respuesta;
+    }
+  </script>
+
+</body>
+</html>
